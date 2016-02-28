@@ -19,6 +19,7 @@ object Streaming {
    *
    * Requires your system to have proper Akka remote configurations set up.
    *
+   * @param actorName Name of the receiver actor
    * @param flowBufferSize In the event that the InputStream is not yet ready, how many elements from the Akka stream
    *                       should be buffered before dropping oldest entries
    * @param actorSystem
