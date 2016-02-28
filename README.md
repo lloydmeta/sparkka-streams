@@ -34,7 +34,7 @@ val merge = builder.add(Merge[Int](2))
 val add1 = Flow[Int].map(_ + 1)
 val times3 = Flow[Int].map(_ * 3)
 source ~> bCast ~> add1 ~> merge
-bCast ~> times3 ~> feedDInput ~> merge
+          bCast ~> times3 ~> feedDInput ~> merge
 
 SourceShape(merge.out)
 })
