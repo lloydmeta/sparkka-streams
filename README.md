@@ -8,10 +8,12 @@ things with Akka Streams.
 _Note_ only Scala 2.11+ is supported at the moment
 
 ```scala
-libraryDependencies += "com.beachape" %% "sparkka-streams" % version 
+libraryDependencies += "com.beachape" %% "sparkka-streams" % "1.0" 
 ```
 
-## USage
+## Usage
+
+__NOTE__ This library requires you to have Akka remote enabled; simply make sure your `application.conf` is [properly configured](http://doc.akka.io/docs/akka/snapshot/scala/remoting.html). 
 
 ```scala
 implicit val actorSystem = ActorSystem()
