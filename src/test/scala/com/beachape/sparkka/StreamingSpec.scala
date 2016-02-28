@@ -3,23 +3,24 @@ package com.beachape.sparkka
 import akka.actor.ActorSystem
 import akka.stream.{ SourceShape, ActorMaterializer }
 import akka.stream.scaladsl._
+import org.scalatest.time.{ Millis, Seconds, Span }
 import org.scalatest.{ Matchers, FunSpec }
-import org.scalatest.concurrent.{ Eventually, IntegrationPatience, ScalaFutures }
+import org.scalatest.concurrent.{ Eventually, ScalaFutures }
 
 /**
  * Created by Lloyd on 2/28/16.
  */
-class StreamingSpec extends FunSpec with ScalaFutures with IntegrationPatience with Matchers with Eventually {
+class StreamingSpec extends FunSpec with ScalaFutures with Matchers with Eventually {
 
-  implicit val actorSystem = ActorSystem()
-  implicit val materializer = ActorMaterializer()
-  implicit val ssc = LocalContext.ssc
-
-  val reduce = { (i: Int, j: Int) => i + j }
+  override implicit val patienceConfig: PatienceConfig = PatienceConfig(Span(30, Seconds), Span(150, Millis))
 
   describe("streamConnection") {
 
-    it("should properly connect") {
+    it("should allow both the original flow and the connected InputDStream to receive all expected values") {
+      implicit val actorSystem = ActorSystem()
+      implicit val materializer = ActorMaterializer()
+      implicit val ssc = LocalContext.ssc
+
       // InputDStream can then be used to build elements of the graph that require integration with Spark
       val (inputDStream, feedDInput) = Streaming.streamConnection[Int]()
       val source = Source.fromGraph(GraphDSL.create() { implicit builder =>
@@ -42,15 +43,16 @@ class StreamingSpec extends FunSpec with ScalaFutures with IntegrationPatience w
       val reducedFlow = source.runWith(Sink.fold(0)(_ + _))
       whenReady(reducedFlow)(_ shouldBe 230)
 
-      val expected = (1 to 10).map(_ * 3)
+      val sharedVar = ssc.sparkContext.accumulator(0)
       inputDStream.foreachRDD { rdd =>
         rdd.foreach { i =>
-          scala.Predef.assert(expected.contains(i))
+          sharedVar += i
         }
       }
       ssc.start()
+      eventually(sharedVar.value shouldBe 165)
     }
 
   }
-}
 
+}

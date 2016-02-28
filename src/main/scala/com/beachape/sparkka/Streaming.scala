@@ -1,10 +1,6 @@
 package com.beachape.sparkka
 
-import _root_.akka.actor.Actor
-import _root_.akka.actor.ActorLogging
-import _root_.akka.actor.ActorRef
-import _root_.akka.actor.ActorSystem
-import _root_.akka.actor.Props
+import akka.actor._
 import _root_.akka.stream.scaladsl.Flow
 import org.apache.spark.streaming.StreamingContext
 import org.apache.spark.streaming.dstream.ReceiverInputDStream
@@ -29,45 +25,37 @@ object Streaming {
    * @param streamingContext
    * @tparam FlowElementType
    * @example
-   *
-   * Format: OFF
+   // format: OFF
    * {{{
-   * import akka.actor.ActorSystem
-   * import akka.stream.{ActorMaterializer, ClosedShape}
-   * import akka.stream.javadsl.{Sink, RunnableGraph}
-   * import akka.stream.scaladsl._
-   * import com.beachape.sparkka._
-   * implicit val actSys = ActorSystem()
-   * implicit val materializer = ActorMaterializer()
-   *
-   * val g = RunnableGraph.fromGraph(GraphDSL.create() { implicit builder =>
-   *
-   * import GraphDSL.Implicits._
-   *
-   * val source = Source(1 to 10)
-   *
-   * val sink = builder.add(Sink.ignore)
-   * val bCast = builder.add(Broadcast[Int](2))
-   * val merge = builder.add(Merge[Int](2))
-   *
-   * // InputDStream can then be used to build elements of the graph that require integration with Spark
-   * val (inputDStream, feedDInput) = SparkIntegration.streamConnection[Int]()
-   *
-   * val add1 = Flow[Int].map(_ + 1)
-   * val times3 = Flow[Int].map(_ * 3)
-   * source ~> bCast ~> add1 ~> merge ~> sink
-   * bCast ~> times3 ~> feedDInput ~> merge
-   *
-   * ClosedShape
-   * })
+implicit val actorSystem = ActorSystem()
+implicit val materializer = ActorMaterializer()
+implicit val ssc = LocalContext.ssc
+
+// InputDStream can then be used to build elements of the graph that require integration with Spark
+val (inputDStream, feedDInput) = Streaming.streamConnection[Int]()
+val source = Source.fromGraph(GraphDSL.create() { implicit builder =>
+
+  import GraphDSL.Implicits._
+
+  val source = Source(1 to 10)
+
+  val bCast = builder.add(Broadcast[Int](2))
+  val merge = builder.add(Merge[Int](2))
+
+  val add1 = Flow[Int].map(_ + 1)
+  val times3 = Flow[Int].map(_ * 3)
+  source ~> bCast ~> add1 ~> merge
+  bCast ~> times3 ~> feedDInput ~> merge
+
+  SourceShape(merge.out)
+})
    * }}}
-   * Format: ON
+   //  format: ON
    */
-  def streamConnection[FlowElementType: ClassTag](flowBufferSize: Int = 5000)(implicit actorSystem: ActorSystem, streamingContext: StreamingContext): (ReceiverInputDStream[FlowElementType], Flow[FlowElementType, FlowElementType, Unit]) = {
+  def streamConnection[FlowElementType: ClassTag](actorName: String = uuid(), flowBufferSize: Int = 5000)(implicit actorSystem: ActorSystem, streamingContext: StreamingContext): (ReceiverInputDStream[FlowElementType], Flow[FlowElementType, FlowElementType, Unit]) = {
     val feederActor = actorSystem.actorOf(Props(new FlowShimFeeder[FlowElementType](flowBufferSize)))
-    val remoteAddress = RemoteAddressExtension(actorSystem).address
-    val feederActorPath = feederActor.path.toStringWithAddress(remoteAddress)
-    val inputDStreamFromActor = streamingContext.actorStream[FlowElementType](Props(new FlowShimPublisher(feederActorPath)), "smiling-classifier-training-stream")
+    val feederActorPath = absoluteAddress(feederActor.path)
+    val inputDStreamFromActor = streamingContext.actorStream[FlowElementType](Props(new FlowShimPublisher(feederActorPath)), actorName)
     val flow = Flow[FlowElementType].map { p =>
       feederActor ! p
       p
@@ -75,26 +63,35 @@ object Streaming {
     (inputDStreamFromActor, flow)
   }
 
+  private def absoluteAddress(path: ActorPath)(implicit actorSystem: ActorSystem): String = {
+    val remoteAddress = RemoteAddressExtension(actorSystem).address
+    path.toStringWithAddress(remoteAddress)
+  }
+
   // Seems rather daft to need 2 actors to do this, but otherwise we run into serialisation problems with the Akka Stream
   private class FlowShimFeeder[FlowElementType: ClassTag](flowBufferSize: Int) extends Actor with ActorLogging {
+    import context.become
     def receive = awaitingSubscriber(Nil)
     def awaitingSubscriber(toSend: Seq[FlowElementType]): Receive = {
-      case d: FlowElementType => context.become(awaitingSubscriber(toSend.takeRight(flowBufferSize) :+ d))
-      case ref: ActorRef => {
+      case d: FlowElementType => become(awaitingSubscriber(toSend.takeRight(flowBufferSize) :+ d))
+      case Subscribe(ref) => {
         toSend.foreach(ref ! _)
-        context.become(subscribed(ref))
+        become(subscribed(Seq(ref)))
       }
       case other => log.error(s"Received a random message: $other")
     }
 
-    def subscribed(subscriber: ActorRef): Receive = {
-      case p: FlowElementType => subscriber ! p
+    def subscribed(subscribers: Seq[ActorRef]): Receive = {
+      case p: FlowElementType => subscribers.foreach(_ ! p)
+      case Subscribe(ref) => become(subscribed(subscribers :+ ref))
+      case UnSubscribe(ref) => become(subscribed(subscribers.filterNot(_ == ref)))
       case other => log.error(s"Received a random message: $other")
     }
   }
   private class FlowShimPublisher[FlowElementType: ClassTag](feederAbsoluteAddress: String) extends Actor with ActorHelper {
-    private val feederActor = context.system.actorSelection(feederAbsoluteAddress)
-    override def preStart(): Unit = feederActor ! self
+    private lazy val feederActor = context.system.actorSelection(feederAbsoluteAddress)
+    override def preStart(): Unit = feederActor ! Subscribe(self)
+    override def postStop(): Unit = feederActor ! UnSubscribe(self)
 
     def receive = {
       case p: FlowElementType => store(p)
@@ -102,4 +99,8 @@ object Streaming {
     }
   }
 
+  private sealed case class Subscribe(ref: ActorRef)
+  private sealed case class UnSubscribe(ref: ActorRef)
+
+  private def uuid() = java.util.UUID.randomUUID.toString
 }
