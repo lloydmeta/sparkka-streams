@@ -1,4 +1,4 @@
-# Sparkka-Streams
+# Sparkka-Streams [![Build Status](https://travis-ci.org/lloydmeta/sparkka-streams.svg?branch=master)](https://travis-ci.org/lloydmeta/sparkka-streams)
 
 Allows you to easily use an Akka Flow to power a Spark DStream, which comes in handy when you need to do streaming ML-related
 things with Akka Streams.
