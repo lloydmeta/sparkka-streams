@@ -32,7 +32,7 @@ pomIncludeRepository := { _ => false }
 scalacOptions ++= Seq("-unchecked", "-deprecation", "-feature", "-Xlint", "-Xlog-free-terms")
 
 pomExtra := (
-  <url>https://github.com/lloydmeta/metascraper</url>
+  <url>https://github.com/lloydmeta/sparkka-streams</url>
     <licenses>
       <license>
         <name>MIT</name>
@@ -42,7 +42,7 @@ pomExtra := (
     </licenses>
     <scm>
       <url>git@github.com:lloydmeta/metascraper.git</url>
-      <connection>scm:git:git@github.com:lloydmeta/metascraper.git</connection>
+      <connection>scm:git:git@github.com:lloydmeta/sparkka-streams.git</connection>
     </scm>
     <developers>
       <developer>
