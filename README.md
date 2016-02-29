@@ -8,7 +8,7 @@ things with Akka Streams.
 _Note_ only Scala 2.11+ is supported at the moment
 
 ```scala
-libraryDependencies += "com.beachape" %% "sparkka-streams" % "1.1" 
+libraryDependencies += "com.beachape" %% "sparkka-streams" % "1.3" 
 ```
 
 ## Usage
@@ -21,7 +21,7 @@ implicit val materializer = ActorMaterializer()
 implicit val ssc = LocalContext.ssc
 
 // InputDStream can then be used to build elements of the graph that require integration with Spark
-val (inputDStream, feedDInput) = Streaming.streamConnection[Int]()
+val (inputDStream, feedDInput) = Streaming.connection[Int]()
 val source = Source.fromGraph(GraphDSL.create() { implicit builder =>
 
 import GraphDSL.Implicits._
