@@ -6,9 +6,9 @@ import akka.actor.{ ExtensionKey, Extension, ExtendedActorSystem }
  * Created by Lloyd on 2/28/16.
  */
 
-object RemoteAddressExtension extends ExtensionKey[RemoteAddressExtensionImpl]
+private[sparkka] object RemoteAddressExtension extends ExtensionKey[RemoteAddressExtensionImpl]
 
-class RemoteAddressExtensionImpl(system: ExtendedActorSystem) extends Extension {
+private[sparkka] class RemoteAddressExtensionImpl(system: ExtendedActorSystem) extends Extension {
   def address = system.provider.getDefaultAddress
 }
 
