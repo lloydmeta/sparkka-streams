@@ -1,6 +1,6 @@
 name := """sparkka-streams"""
 
-version := "1.2"
+version := "1.3-SNAPSHOT"
 
 scalaVersion := "2.11.7"
 
