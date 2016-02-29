@@ -58,7 +58,7 @@ val source = Source.fromGraph(GraphDSL.create() { implicit builder =>
     * }}}
    //  format: ON
    */
-  def streamConnection[FlowElementType: ClassTag](
+  def connection[FlowElementType: ClassTag](
     actorName: String = randomUniqueName("akka-stream-receiver"),
     initialBufferSize: Int = 50000,
     initialBufferWait: FiniteDuration = 15.seconds

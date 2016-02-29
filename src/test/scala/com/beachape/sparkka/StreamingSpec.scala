@@ -22,7 +22,7 @@ class StreamingSpec extends FunSpec with ScalaFutures with Matchers with Eventua
       implicit val ssc = LocalContext.ssc
 
       // InputDStream can then be used to build elements of the graph that require integration with Spark
-      val (inputDStream, feedDInput) = Streaming.streamConnection[Int]()
+      val (inputDStream, feedDInput) = Streaming.connection[Int]()
       val source = Source.fromGraph(GraphDSL.create() { implicit builder =>
 
         import GraphDSL.Implicits._
