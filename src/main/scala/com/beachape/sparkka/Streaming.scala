@@ -6,6 +6,7 @@ import org.apache.spark.streaming.StreamingContext
 import org.apache.spark.streaming.dstream.ReceiverInputDStream
 import org.apache.spark.streaming.receiver.ActorHelper
 
+import scala.collection.immutable.Queue
 import scala.reflect.ClassTag
 
 /**
@@ -53,7 +54,7 @@ val source = Source.fromGraph(GraphDSL.create() { implicit builder =>
    * }}}
    //  format: ON
    */
-  def streamConnection[FlowElementType: ClassTag](actorName: String = uuid(), flowBufferSize: Int = 5000)(implicit actorSystem: ActorSystem, streamingContext: StreamingContext): (ReceiverInputDStream[FlowElementType], Flow[FlowElementType, FlowElementType, Unit]) = {
+  def streamConnection[FlowElementType: ClassTag](actorName: String = randomUniqueName("akka-stream-receiver"), flowBufferSize: Int = 5000)(implicit actorSystem: ActorSystem, streamingContext: StreamingContext): (ReceiverInputDStream[FlowElementType], Flow[FlowElementType, FlowElementType, Unit]) = {
     val feederActor = actorSystem.actorOf(Props(new FlowShimFeeder[FlowElementType](flowBufferSize)))
     val feederActorPath = absoluteAddress(feederActor.path)
     val inputDStreamFromActor = streamingContext.actorStream[FlowElementType](Props(new FlowShimPublisher(feederActorPath)), actorName)
@@ -72,10 +73,17 @@ val source = Source.fromGraph(GraphDSL.create() { implicit builder =>
   // Seems rather daft to need 2 actors to do this, but otherwise we run into serialisation problems with the Akka Stream
   private class FlowShimFeeder[FlowElementType: ClassTag](flowBufferSize: Int) extends Actor with ActorLogging {
     import context.become
-    def receive = awaitingSubscriber(Nil)
-    def awaitingSubscriber(toSend: Seq[FlowElementType]): Receive = {
-      case d: FlowElementType => become(awaitingSubscriber(toSend.takeRight(flowBufferSize) :+ d))
+    def receive = awaitingSubscriber(Queue.empty)
+    def awaitingSubscriber(toSend: Queue[FlowElementType]): Receive = {
+      case d: FlowElementType => {
+        if (toSend.size >= flowBufferSize) {
+          log.warning(s"${self.path}'s buffer is full (max $flowBufferSize) but there are still no subscribers, dropping oldest entries ")
+        }
+        val newToSendQueue = toSend.takeRight(flowBufferSize) :+ d
+        become(awaitingSubscriber(newToSendQueue))
+      }
       case Subscribe(ref) => {
+        log.debug(s"Got a subscriber (${ref.path}), emptying buffer")
         toSend.foreach(ref ! _)
         become(subscribed(Seq(ref)))
       }
@@ -84,7 +92,7 @@ val source = Source.fromGraph(GraphDSL.create() { implicit builder =>
 
     def subscribed(subscribers: Seq[ActorRef]): Receive = {
       case p: FlowElementType => subscribers.foreach(_ ! p)
-      case Subscribe(ref) => become(subscribed(subscribers :+ ref))
+      case Subscribe(ref) => become(subscribed(ref +: subscribers))
       case UnSubscribe(ref) => become(subscribed(subscribers.filterNot(_ == ref)))
       case other => log.error(s"Received a random message: $other")
     }
@@ -102,6 +110,8 @@ val source = Source.fromGraph(GraphDSL.create() { implicit builder =>
 
   private sealed case class Subscribe(ref: ActorRef)
   private sealed case class UnSubscribe(ref: ActorRef)
+
+  private def randomUniqueName(nameBase: String): String = s"$nameBase-${uuid()}"
 
   private def uuid() = java.util.UUID.randomUUID.toString
 }
