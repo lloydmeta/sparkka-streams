@@ -1,6 +1,14 @@
 # Sparkka-Streams [![Build Status](https://travis-ci.org/lloydmeta/sparkka-streams.svg?branch=master)](https://travis-ci.org/lloydmeta/sparkka-streams)
 
-Allows you to easily use an Akka Flow to power a Spark DStream, which comes in handy when you need to do streaming ML-related
+Need to use an Akka Flow to push elements into a Spark InputDStream? You may have all or any of the following reasons to want to do so:
+
+1. You already have transformed Flows on your driver and you would like to tap into it at any point to power an InputDStream
+2. Your `Source[A]` is not something you can or want to connect to from your Spark source (e.g. webcam, websocket, or 
+   connection-limited API like Twitter Streaming)
+3. For efficiency reasons, you want to maintain only 1 Source on your driver for many different Spark streaming transformations; 
+   after all, more `Source` connections doesn't mean you will get data pipped to you any faster
+
+Sparkka-Streams allows you to easily use an Akka Flow to power a Spark DStream, which comes in handy when you need to do streaming ML-related
 things with Akka Streams.
 
 ## SBT
@@ -8,7 +16,7 @@ things with Akka Streams.
 _Note_ only Scala 2.11+ is supported at the moment
 
 ```scala
-libraryDependencies += "com.beachape" %% "sparkka-streams" % "1.4" 
+libraryDependencies += "com.beachape" %% "sparkka-streams" % "1.5" 
 ```
 
 ## Usage

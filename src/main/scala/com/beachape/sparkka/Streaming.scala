@@ -28,7 +28,7 @@ object Streaming {
    * buffer is held constant up until the provided initial buffer wait duration, after which point we start dropping oldest buffer
    * entries, and backpressure stops.
    *
-   * @param actorName Name of the receiver actor
+   * @param actorName Name of the receiver actor (default: "akka-stream-receiver-$uuid")
    * @param initialBufferSize In the event that the InputStream is not yet started, how many elements from the Akka stream
    *                          should be buffered before dropping oldest entries (default: 50000)
    * @param initialBufferWait In the event that the InputStream is not yet started and the buffer is full, how long to "block"
