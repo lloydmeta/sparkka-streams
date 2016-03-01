@@ -8,7 +8,7 @@ things with Akka Streams.
 _Note_ only Scala 2.11+ is supported at the moment
 
 ```scala
-libraryDependencies += "com.beachape" %% "sparkka-streams" % "1.3" 
+libraryDependencies += "com.beachape" %% "sparkka-streams" % "1.4" 
 ```
 
 ## Usage
