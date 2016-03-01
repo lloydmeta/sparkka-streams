@@ -19,33 +19,46 @@ _Note_ only Scala 2.11+ is supported at the moment
 libraryDependencies += "com.beachape" %% "sparkka-streams" % "1.5" 
 ```
 
-## Usage
+## Usage/Example
 
 __NOTE__ This library requires you to have Akka remote enabled; simply make sure your `application.conf` is [properly configured](http://doc.akka.io/docs/akka/snapshot/scala/remoting.html). 
 
 ```scala
-implicit val actorSystem = ActorSystem()
-implicit val materializer = ActorMaterializer()
-implicit val ssc = LocalContext.ssc
 
-// InputDStream can then be used to build elements of the graph that require integration with Spark
+/* 
+ This can be done anywhere. You essentially get a Spark InputDStream and a Flow piece that you can plug into your Akka Flow 
+ to feed the InputDStream
+*/
 val (inputDStream, feedDInput) = Streaming.connection[Int]()
+
 val source = Source.fromGraph(GraphDSL.create() { implicit builder =>
-
-import GraphDSL.Implicits._
-
-val source = Source(1 to 10)
-
-val bCast = builder.add(Broadcast[Int](2))
-val merge = builder.add(Merge[Int](2))
-
-val add1 = Flow[Int].map(_ + 1)
-val times3 = Flow[Int].map(_ * 3)
-source ~> bCast ~> add1 ~> merge
-          bCast ~> times3 ~> feedDInput ~> merge
-
-SourceShape(merge.out)
+    import GraphDSL.Implicits._
+    
+    val source = Source(1 to 10)
+    
+    val bCast = builder.add(Broadcast[Int](2))
+    val merge = builder.add(Merge[Int](2))
+    
+    val add1 = Flow[Int].map(_ + 1)
+    val times3 = Flow[Int].map(_ * 3)
+    
+    source ~> bCast ~> add1 ~> merge
+              bCast ~> times3 ~> feedDInput ~> merge
+    
+    SourceShape(merge.out)
 })
+
+val reducedFlow = source.runWith(Sink.fold(0)(_ + _))
+whenReady(reducedFlow)(_ shouldBe 230)
+
+val sharedVar = ssc.sparkContext.accumulator(0)
+inputDStream.foreachRDD { rdd =>
+    rdd.foreach { i =>
+      sharedVar += i
+    }
+}
+ssc.start()
+eventually(sharedVar.value shouldBe 165)
 ```
 
 ## Licence
