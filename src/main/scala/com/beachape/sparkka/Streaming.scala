@@ -4,9 +4,10 @@ import akka.actor._
 import _root_.akka.stream.scaladsl.Flow
 import akka.pattern._
 import akka.util.Timeout
+import org.apache.spark.storage.StorageLevel
 import org.apache.spark.streaming.StreamingContext
 import org.apache.spark.streaming.dstream.ReceiverInputDStream
-import org.apache.spark.streaming.receiver.ActorHelper
+import org.apache.spark.streaming.receiver.{ ActorSupervisorStrategy, ActorHelper }
 
 import scala.collection.immutable.Queue
 import scala.concurrent.duration._
@@ -21,15 +22,19 @@ object Streaming {
    * Returns an InputDStream of type FlowElementType along with a Flow map element that you can use to attach to
    * your flow.
    *
+   * <em>NOTE</em> ensure that you have remoting set up properly in your application.conf; see http://doc.akka.io/docs/akka/snapshot/scala/remoting.html
+   *
    * <em>Backpressures</em> if and when the initial buffer is filled and your input stream has not yet started; in this event, the
    * buffer is held constant up until the provided initial buffer wait duration, after which point we start dropping oldest buffer
    * entries, and backpressure stops.
    *
    * @param actorName Name of the receiver actor
    * @param initialBufferSize In the event that the InputStream is not yet started, how many elements from the Akka stream
-   *                          should be buffered before dropping oldest entries
+   *                          should be buffered before dropping oldest entries (default: 50000)
    * @param initialBufferWait In the event that the InputStream is not yet started and the buffer is full, how long to "block"
-   *                          for until we begin culling oldest items from the buffer
+   *                          for until we begin culling oldest items from the buffer (default: 15 seconds)
+   * @param storageLevel RDD storage level (default: StorageLevel.MEMORY_AND_DISK_SER_2) for the receiver
+   * @param supervisorStrategy Supervisor strategy for the receiver actor (default: ActorSupervisorStrategy.defaultStrategy)
    * @example
   // format: OFF
     * {{{
@@ -61,11 +66,18 @@ val source = Source.fromGraph(GraphDSL.create() { implicit builder =>
   def connection[FlowElementType: ClassTag](
     actorName: String = randomUniqueName("akka-stream-receiver"),
     initialBufferSize: Int = 50000,
-    initialBufferWait: FiniteDuration = 15.seconds
+    initialBufferWait: FiniteDuration = 15.seconds,
+    storageLevel: StorageLevel = StorageLevel.MEMORY_AND_DISK_SER_2,
+    supervisorStrategy: SupervisorStrategy = ActorSupervisorStrategy.defaultStrategy
   )(implicit actorSystem: ActorSystem, streamingContext: StreamingContext): (ReceiverInputDStream[FlowElementType], Flow[FlowElementType, FlowElementType, Unit]) = {
     val feederActor = actorSystem.actorOf(Props(new FlowShimFeeder[FlowElementType](initialBufferSize, initialBufferWait)))
     val feederActorPath = absoluteAddress(feederActor.path)
-    val inputDStreamFromActor = streamingContext.actorStream[FlowElementType](Props(new FlowShimReceiver(feederActorPath)), actorName)
+    val inputDStreamFromActor = streamingContext.actorStream[FlowElementType](
+      props = Props(new FlowShimReceiver(feederActorPath)),
+      name = actorName,
+      storageLevel = storageLevel,
+      supervisorStrategy = supervisorStrategy
+    )
     implicit val askTimeout = Timeout(initialBufferWait + 500.millis)
     import actorSystem.dispatcher
     val flow = Flow[FlowElementType].mapAsync(1 /* Otherwise, the feeding actor gets elements out of order */ ) { p =>
